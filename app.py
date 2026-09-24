@@ -147,7 +147,7 @@ st.markdown("""
         color: #000000 !important;
     }
 
-    /* נגן Now Playing קבוע */
+    /* נגן Now Playing */
     .now-playing-card {
         background: linear-gradient(135deg, rgba(22, 16, 28, 0.9), rgba(12, 10, 16, 0.95));
         border: 1px solid #1DB954;
@@ -315,7 +315,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. אתחול Auth עם Cookie Manager (נשאר מחובר ברענון)
+# 2. אתחול Auth עם Cookie Manager
 # ==========================================
 load_dotenv()
 CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
@@ -326,7 +326,6 @@ SCOPE = "user-read-playback-state user-modify-playback-state playlist-read-priva
 
 cookie_manager = stx.CookieManager()
 
-# שאיבת טוקן קיים מה-Cookies אם זמין
 cached_cookie = cookie_manager.get(cookie="sp_token")
 if cached_cookie and "spotify_token" not in st.session_state:
     try:
@@ -384,7 +383,6 @@ TARGET_PLAYLIST_NAME = "True Shuffle - Mix"
 MAX_SAMPLE_COUNT = 200
 CACHE_FILE = "genres_cache.json"
 
-# תגיות חיוביות לכל מצב
 GENRE_MOOD_MAP = {
     "🚗 Drive": ["pop", "dance pop", "electropop", "synthpop", "indie pop", "funk"],
     "🌙 Chill": ["acoustic", "ambient", "chillout", "lo-fi", "lofi", "piano", "downtempo", "relax", "chill", "sleep"],
@@ -393,27 +391,26 @@ GENRE_MOOD_MAP = {
     "👑 Classics": ["classic rock", "80s", "70s", "60s", "90s", "oldies", "disco", "blues", "retro", "classic"],
     "🎉 Party": ["dance", "club", "edm", "house", "electro", "hip hop", "rap", "trap"],
     "⚡ Workout": ["power metal", "hardstyle", "synthwave", "trap", "electronic rock", "dubstep", "workout"],
-    "🧠 Focus": ["instrumental", "ambient", "modern classical", "minimalism", "study", "soundtrack"]
+    "🧠 Focus": ["instrumental", "ambient", "modern classical", "minimalism", "study"]
 }
 
-# חסימות שליליות (Blacklists) למניעת שירים לא מתאימים
+# חסימות שליליות ממוקדות בלבד (חוסמות רק ז'אנרים לא קשורים מובהקים)
 MOOD_BLACKLIST = {
     "🌙 Chill": {
-        "rock", "metal", "hard rock", "metalcore", "punk", "edm", "dance", 
-        "electronic", "electro", "house", "dubstep", "synthwave", "soundtrack", 
-        "epic", "j-rock", "party", "club", "trap", "heavy metal", "power metal"
+        "metal", "heavy metal", "death metal", "metalcore", "hard rock", 
+        "screamo", "punk", "hardstyle", "dubstep", "edm", "party", "club", "trap"
     },
     "🧠 Focus": {
-        "screamo", "metalcore", "death metal", "hardstyle", "dubstep", "party", "club"
+        "screamo", "metalcore", "death metal", "hardstyle", "dubstep"
     },
     "👑 Classics": {
-        "edm", "trap", "dubstep", "electro", "hyperpop", "modern rock", "contemporary"
+        "edm", "trap", "dubstep", "hyperpop"
     },
     "🎸 Rock": {
-        "edm", "house", "hip hop", "rap", "trap", "ambient"
+        "edm", "house", "trap"
     },
     "🤘 Metal": {
-        "pop", "dance pop", "acoustic", "lo-fi", "lofi", "ambient", "edm", "disco"
+        "lo-fi", "lofi", "ambient", "edm", "disco"
     }
 }
 
@@ -487,7 +484,7 @@ def fetch_artist_genres_lastfm(artist_name):
     return []
 
 @st.cache_data(show_spinner=False)
-def load_and_classify_tracks(_sp, playlist_id):
+def load_and_classify_tracks(_sp, user_id, playlist_id):
     tracks = []
     offset = 0
     while True:
@@ -543,10 +540,9 @@ def filter_tracks_by_tags(tracks, selected_tags, active_mood=None):
     for t in tracks:
         track_genres = set(t.get('genres', []))
 
-        if blacklist:
-            is_blacklisted = any(bad in g for bad in blacklist for g in track_genres)
-            if is_blacklisted:
-                continue
+        # בדיקת חסימה מדויקת (חוסם רק אם יש התאמה מלאה לז'אנר ברשימה השחורה)
+        if blacklist and any(g in blacklist for g in track_genres):
+            continue
 
         if selected_tags:
             if any(tag in track_genres for tag in selected_tags):
@@ -619,7 +615,7 @@ with col_left:
     active_p = available_playlists[active_p_index]
     
     with st.spinner(f"Loading {active_p['name']}..."):
-        all_tracks = load_and_classify_tracks(sp, active_p['id'])
+        all_tracks = load_and_classify_tracks(sp, current_user_id, active_p['id'])
 
     available_subgenres = sorted(list({g for t in all_tracks for g in t['genres']}))
 
@@ -661,6 +657,7 @@ with col_right:
             st.session_state.active_mood = None if is_mood_active else m
             st.rerun()
 
+    # חישוב תגיות ברירת מחדל מוגנות
     valid_defaults = []
     if st.session_state.active_mood:
         raw_tags = GENRE_MOOD_MAP.get(st.session_state.active_mood, [])
@@ -697,6 +694,7 @@ with col_right:
 
             with st.spinner(f"Queuing {len(track_uris)} randomized tracks..."):
                 target_id = get_or_create_target_playlist(sp)
+                # דריסה נקייה של הפלייליסט עם השירים המוגרלים בלבד
                 sp.playlist_replace_items(target_id, track_uris[:100])
                 if len(track_uris) > 100:
                     sp.playlist_add_items(target_id, track_uris[100:200])
@@ -707,14 +705,18 @@ with col_right:
                 except Exception:
                     pass
                 try:
+                    # ניגון ישיר של רשימת ה-URIs כדי למנוע זליגת שירים חיצוניים מ-Spotify
                     sp.start_playback(
                         device_id=selected_device_id,
-                        context_uri=f"spotify:playlist:{target_id}",
-                        offset={"position": 0}
+                        uris=track_uris[:100]
                     )
                 except Exception:
                     try:
-                        sp.start_playback(device_id=selected_device_id, uris=track_uris[:100])
+                        sp.start_playback(
+                            device_id=selected_device_id,
+                            context_uri=f"spotify:playlist:{target_id}",
+                            offset={"position": 0}
+                        )
                     except Exception:
                         pass
             st.rerun()
