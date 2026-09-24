@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import random
 import requests
@@ -61,7 +61,7 @@ st.markdown("""
         margin-top: 4px;
     }
 
-    /* כרטיסיות גריד מינימליסטיות ללא כמות שירים */
+    /* כרטיסיות גריד מינימליסטיות */
     .playlist-card-container {
         background-color: rgba(22, 17, 28, 0.7);
         backdrop-filter: blur(10px);
@@ -376,31 +376,31 @@ GENRE_MOOD_MAP = {
 }
 
 # ==========================================
-# 3. פונקציות API
+# 3. פונקציות API (מופרדות פר משתמש)
 # ==========================================
 def format_ms(ms):
     seconds = int((ms / 1000) % 60)
     minutes = int((ms / (1000 * 60)) % 60)
     return f"{minutes}:{seconds:02d}"
 
-def get_or_create_target_playlist():
-    current_user_id = sp.current_user()['id']
-    user_playlists = sp.current_user_playlists(limit=50).get('items', [])
+def get_or_create_target_playlist(_sp):
+    current_user_id = _sp.current_user()['id']
+    user_playlists = _sp.current_user_playlists(limit=50).get('items', [])
     for p in user_playlists:
         if p['name'] == TARGET_PLAYLIST_NAME:
             return p['id']
-    new_playlist = sp.user_playlist_create(
+    new_playlist = _sp.user_playlist_create(
         user=current_user_id, name=TARGET_PLAYLIST_NAME, public=False,
         description="Auto-generated true randomized subset shuffle."
     )
     return new_playlist['id']
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def fetch_user_playlists():
+def fetch_user_playlists(_sp, user_id):
     playlists = []
     offset = 0
     while True:
-        res = sp.current_user_playlists(limit=50, offset=offset)
+        res = _sp.current_user_playlists(limit=50, offset=offset)
         items = res.get('items', [])
         if not items:
             break
@@ -445,11 +445,11 @@ def fetch_artist_genres_lastfm(artist_name):
     return []
 
 @st.cache_data(show_spinner=False)
-def load_and_classify_tracks(playlist_id):
+def load_and_classify_tracks(_sp, playlist_id):
     tracks = []
     offset = 0
     while True:
-        res = sp.playlist_items(playlist_id, offset=offset, limit=100)
+        res = _sp.playlist_items(playlist_id, offset=offset, limit=100)
         items = res.get('items', [])
         if not items:
             break
@@ -508,7 +508,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 try:
-    available_playlists = fetch_user_playlists()
+    current_user_profile = sp.current_user()
+    current_user_id = current_user_profile['id']
+    available_playlists = fetch_user_playlists(sp, current_user_id)
 except Exception as e:
     st.error(f"Spotify API Error: ({e})")
     st.stop()
@@ -556,7 +558,7 @@ with col_left:
     active_p = available_playlists[active_p_index]
     
     with st.spinner(f"Loading {active_p['name']}..."):
-        all_tracks = load_and_classify_tracks(active_p['id'])
+        all_tracks = load_and_classify_tracks(sp, active_p['id'])
 
     available_subgenres = sorted(list({g for t in all_tracks for g in t['genres']}))
 
@@ -627,7 +629,7 @@ with col_right:
             track_uris = [t['uri'] for t in sampled_tracks]
 
             with st.spinner(f"Queuing {len(track_uris)} randomized tracks..."):
-                target_id = get_or_create_target_playlist()
+                target_id = get_or_create_target_playlist(sp)
                 sp.playlist_replace_items(target_id, track_uris[:100])
                 if len(track_uris) > 100:
                     sp.playlist_add_items(target_id, track_uris[100:200])
@@ -751,7 +753,7 @@ with col_right:
 
     st.markdown(card_html, unsafe_allow_html=True)
 
-    # כפתורי שליטה ממורכזים
+    # כפתורי שליטה
     st.markdown('<div class="media-controls-container">', unsafe_allow_html=True)
     spacer_left, btn_col1, btn_col2, btn_col3, spacer_right = st.columns([1.6, 1, 1.2, 1, 1.6])
     
@@ -782,9 +784,8 @@ with col_right:
                 pass
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # רענון מדויק בדיוק כשהשיר מסתיים (Smart Client-side Timer)
+    # רענון מדויק בסיום שיר
     if is_playing and remaining_ms > 0:
-        # ממתינים את הזמן שנותר + שנייה וחצי כדי שספוטיפיי תספיק להחליף טראק בשרת
         auto_refresh_delay_ms = remaining_ms + 1500
         components.html(
             f"""
