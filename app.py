@@ -379,7 +379,7 @@ if not token_info:
     ''', unsafe_allow_html=True)
     st.stop()
 
-# הרחבת ה-Timeout ל-20 שניות כדי למנוע ReadTimeout בענן
+# הרחבת Timeout ומספר ניסיונות חוזרים למניעת ניתוקי רשת
 sp = spotipy.Spotify(
     auth_manager=sp_oauth,
     requests_timeout=20,
@@ -401,7 +401,7 @@ GENRE_MOOD_MAP = {
     "🧠 Focus": ["instrumental", "ambient", "modern classical", "minimalism", "study"]
 }
 
-# חסימה נקודתית בלבד עבור Chill (מניעת רוק כבד/מטאל ו-OST מלחמתיים)
+# חסימה ממוקדת בלבד עבור Chill (מניעת רוק כבד/מטאל ושירי OST מלחמתיים)
 MOOD_BLACKLIST = {
     "🌙 Chill": {"metal", "heavy metal", "death metal", "metalcore", "hard rock", "screamo", "hardstyle", "soundtrack", "ost", "epic"}
 }
@@ -415,16 +415,45 @@ def format_ms(ms):
     return f"{minutes}:{seconds:02d}"
 
 def get_or_create_target_playlist(_sp):
-    current_user_id = _sp.current_user()['id']
-    user_playlists = _sp.current_user_playlists(limit=50).get('items', [])
-    for p in user_playlists:
-        if p['name'] == TARGET_PLAYLIST_NAME:
-            return p['id']
-    new_playlist = _sp.user_playlist_create(
-        user=current_user_id, name=TARGET_PLAYLIST_NAME, public=False,
-        description="Auto-generated true randomized subset shuffle."
-    )
-    return new_playlist['id']
+    # חיפוש האם הפלייליסט כבר קיים בחשבון המשתמש
+    try:
+        offset = 0
+        while True:
+            res = _sp.current_user_playlists(limit=50, offset=offset)
+            items = res.get('items', [])
+            if not items:
+                break
+            for p in items:
+                if p and p.get('name') == TARGET_PLAYLIST_NAME:
+                    return p['id']
+            offset += len(items)
+            if not res.get('next'):
+                break
+    except Exception:
+        pass
+
+    # יצירה בטוחה באמצעות ה-endpoint המודרני של ספוטיפיי
+    try:
+        new_playlist = _sp.current_user_playlist_create(
+            name=TARGET_PLAYLIST_NAME,
+            public=False,
+            collaborative=False,
+            description="Auto-generated true randomized subset shuffle."
+        )
+        return new_playlist['id']
+    except Exception:
+        try:
+            curr_user = _sp.current_user()['id']
+            new_playlist = _sp.user_playlist_create(
+                user=curr_user,
+                name=TARGET_PLAYLIST_NAME,
+                public=False,
+                description="Auto-generated true randomized subset shuffle."
+            )
+            return new_playlist['id']
+        except Exception as e:
+            st.error(f"Failed to create playlist on Spotify: {e}")
+            st.stop()
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_user_playlists(_sp, user_id):
@@ -545,7 +574,7 @@ def filter_tracks_by_tags(tracks, selected_tags, active_mood=None):
                 continue
 
         if selected_tags:
-            # התאמה רחבה כדי לשמור על פול שירים מלא
+            # התאמה רחבה ששומרת על פול שירים עשיר
             if any(tag in g for tag in selected_tags for g in track_genres):
                 filtered.append(t)
         else:
@@ -695,7 +724,7 @@ with col_right:
             with st.spinner(f"Queuing {len(track_uris)} randomized tracks..."):
                 target_id = get_or_create_target_playlist(sp)
                 
-                # החלפת שירים מוגנת עם מנגנון Retry נגד טיים-אאוט
+                # החלפת שירים בטוחה עם מנגנון ניסיון חוזר נגד ניתוקים
                 success = False
                 for attempt in range(2):
                     try:
