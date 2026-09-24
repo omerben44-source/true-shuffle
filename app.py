@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.cache_handler import CacheHandler
+import extra_streamlit_components as stx
 
 st.set_page_config(page_title="True Shuffle", page_icon="🎵", layout="wide")
 
@@ -61,7 +62,7 @@ st.markdown("""
         margin-top: 4px;
     }
 
-    /* כרטיסיות גריד מינימליסטיות */
+    /* כרטיסיות גריד */
     .playlist-card-container {
         background-color: rgba(22, 17, 28, 0.7);
         backdrop-filter: blur(10px);
@@ -115,7 +116,7 @@ st.markdown("""
         color: #000000 !important;
     }
 
-    /* כפתורי Mood דינמיים לפי בחירה */
+    /* כפתורי Mood */
     button[kind="secondary"] {
         background-color: rgba(255, 255, 255, 0.08) !important;
         color: #FFFFFF !important;
@@ -314,7 +315,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. אתחול והגדרות ספוטיפיי (Multi-User Auth)
+# 2. אתחול Auth עם Cookie Manager (נשאר מחובר ברענון)
 # ==========================================
 load_dotenv()
 CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
@@ -323,24 +324,43 @@ REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
 LASTFM_KEY = os.getenv("LASTFM_API_KEY")
 SCOPE = "user-read-playback-state user-modify-playback-state playlist-read-private playlist-modify-private playlist-modify-public user-library-read"
 
-class StreamlitSessionCacheHandler(CacheHandler):
+cookie_manager = stx.CookieManager()
+
+# שאיבת טוקן קיים מה-Cookies אם זמין
+cached_cookie = cookie_manager.get(cookie="sp_token")
+if cached_cookie and "spotify_token" not in st.session_state:
+    try:
+        if isinstance(cached_cookie, str):
+            st.session_state["spotify_token"] = json.loads(cached_cookie)
+        elif isinstance(cached_cookie, dict):
+            st.session_state["spotify_token"] = cached_cookie
+    except Exception:
+        pass
+
+class StreamlitCookieCacheHandler(CacheHandler):
     def get_cached_token(self):
         return st.session_state.get("spotify_token", None)
 
     def save_token_to_cache(self, token_info):
         st.session_state["spotify_token"] = token_info
+        try:
+            cookie_manager.set("sp_token", json.dumps(token_info))
+        except Exception:
+            pass
 
 sp_oauth = SpotifyOAuth(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
     redirect_uri=REDIRECT_URI,
     scope=SCOPE,
-    cache_handler=StreamlitSessionCacheHandler()
+    cache_handler=StreamlitCookieCacheHandler()
 )
 
 if "code" in st.query_params:
     code = st.query_params["code"]
-    sp_oauth.get_access_token(code)
+    token_info = sp_oauth.get_access_token(code)
+    st.session_state["spotify_token"] = token_info
+    cookie_manager.set("sp_token", json.dumps(token_info))
     st.query_params.clear()
     st.rerun()
 
@@ -376,7 +396,7 @@ GENRE_MOOD_MAP = {
     "🧠 Focus": ["instrumental", "ambient", "modern classical", "minimalism", "study", "soundtrack"]
 }
 
-# חסימות שליליות (Blacklists) למניעת זליגת שירים לא מתאימים
+# חסימות שליליות (Blacklists) למניעת שירים לא מתאימים
 MOOD_BLACKLIST = {
     "🌙 Chill": {
         "rock", "metal", "hard rock", "metalcore", "punk", "edm", "dance", 
@@ -523,13 +543,11 @@ def filter_tracks_by_tags(tracks, selected_tags, active_mood=None):
     for t in tracks:
         track_genres = set(t.get('genres', []))
 
-        # בדיקת חסימות (אם יש התאמה לז'אנר ברשימה השחורה של המוד הנוכחי - פוסלים)
         if blacklist:
             is_blacklisted = any(bad in g for bad in blacklist for g in track_genres)
             if is_blacklisted:
                 continue
 
-        # בדיקת התאמה לתגיות הנבחרות
         if selected_tags:
             if any(tag in track_genres for tag in selected_tags):
                 filtered.append(t)
@@ -643,18 +661,15 @@ with col_right:
             st.session_state.active_mood = None if is_mood_active else m
             st.rerun()
 
-    # חישוב תגיות ברירת מחדל בצורה מוגנת מפני קריסות (Strict Verification)
     valid_defaults = []
     if st.session_state.active_mood:
         raw_tags = GENRE_MOOD_MAP.get(st.session_state.active_mood, [])
-        # מוצאים את כל התת-ז'אנרים שבאמת קיימים בפלייליסט ומכילים את אחת מהמילים
         for tag_word in raw_tags:
             for g in available_subgenres:
                 if tag_word == g or tag_word in g:
                     if g not in valid_defaults:
                         valid_defaults.append(g)
 
-    # וידוא קפדני: כל איבר ב-default חייב להופיע ב-options
     safe_defaults = [v for v in valid_defaults if v in available_subgenres]
 
     selected_subgenres = st.multiselect(
@@ -836,7 +851,7 @@ with col_right:
                 pass
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # רענון מדויק בסיום שיר
+    # מעבר אוטומטי שקוף בסיום שיר
     if is_playing and remaining_ms > 0:
         auto_refresh_delay_ms = remaining_ms + 1500
         components.html(
