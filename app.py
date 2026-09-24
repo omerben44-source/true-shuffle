@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import time
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
@@ -94,10 +95,15 @@ st.markdown("""
         font-weight: 700;
         font-size: 0.88rem;
         margin-top: 8px;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+    .card-subtitle {
+        font-size: 0.75rem;
+        color: #888888;
+        margin-bottom: 8px;
     }
 
     .playlist-select-btn button {
@@ -394,24 +400,9 @@ GENRE_MOOD_MAP = {
     "🧠 Focus": ["instrumental", "ambient", "modern classical", "minimalism", "study"]
 }
 
-# חסימות שליליות ממוקדות בלבד (חוסמות רק ז'אנרים לא קשורים מובהקים)
+# חסימה מינימלית וכירורגית כדי לא לפגוע בכמות השירים
 MOOD_BLACKLIST = {
-    "🌙 Chill": {
-        "metal", "heavy metal", "death metal", "metalcore", "hard rock", 
-        "screamo", "punk", "hardstyle", "dubstep", "edm", "party", "club", "trap"
-    },
-    "🧠 Focus": {
-        "screamo", "metalcore", "death metal", "hardstyle", "dubstep"
-    },
-    "👑 Classics": {
-        "edm", "trap", "dubstep", "hyperpop"
-    },
-    "🎸 Rock": {
-        "edm", "house", "trap"
-    },
-    "🤘 Metal": {
-        "lo-fi", "lofi", "ambient", "edm", "disco"
-    }
+    "🌙 Chill": {"metal", "heavy metal", "death metal", "metalcore", "hard rock", "screamo", "hardstyle", "soundtrack", "ost", "epic"}
 }
 
 # ==========================================
@@ -446,13 +437,19 @@ def fetch_user_playlists(_sp, user_id):
         for p in items:
             if p['name'] != TARGET_PLAYLIST_NAME:
                 img_url = p['images'][0]['url'] if p.get('images') and len(p['images']) > 0 else "https://community.spotify.com/t5/image/serverpage/image-id/25294iA2807C22F2D4D360"
+                # שאיבת כמות השירים כדי למיין לפיה
+                track_count = p.get('tracks', {}).get('total', 0)
                 playlists.append({
                     'name': p['name'], 'id': p['id'], 'image': img_url,
-                    'owner': p.get('owner', {}).get('display_name', 'Spotify User')
+                    'owner': p.get('owner', {}).get('display_name', 'Spotify User'),
+                    'track_count': track_count
                 })
         offset += len(items)
         if not res.get('next'):
             break
+            
+    # מיון הפלייליסטים מהגדול לקטן לפי כמות השירים
+    playlists.sort(key=lambda x: x['track_count'], reverse=True)
     return playlists
 
 def load_cached_genres():
@@ -488,7 +485,12 @@ def load_and_classify_tracks(_sp, user_id, playlist_id):
     tracks = []
     offset = 0
     while True:
-        res = _sp.playlist_items(playlist_id, offset=offset, limit=100)
+        try:
+            # הגנה למקרה שהפלייליסט נמחק מספוטיפיי אבל נשאר בזיכרון של הענן
+            res = _sp.playlist_items(playlist_id, offset=offset, limit=100)
+        except Exception:
+            break
+            
         items = res.get('items', [])
         if not items:
             break
@@ -540,12 +542,15 @@ def filter_tracks_by_tags(tracks, selected_tags, active_mood=None):
     for t in tracks:
         track_genres = set(t.get('genres', []))
 
-        # בדיקת חסימה מדויקת (חוסם רק אם יש התאמה מלאה לז'אנר ברשימה השחורה)
-        if blacklist and any(g in blacklist for g in track_genres):
-            continue
+        # בדיקת רשימה שחורה (מילים אסורות חלקית, אבל כעת הרשימה קטנה וכירורגית)
+        if blacklist:
+            is_blacklisted = any(bad in g for bad in blacklist for g in track_genres)
+            if is_blacklisted:
+                continue
 
         if selected_tags:
-            if any(tag in track_genres for tag in selected_tags):
+            # החזרנו להתאמה חלקה ורחבה יותר כדי שפול השירים יחזור להיות גדול
+            if any(tag in g for tag in selected_tags for g in track_genres):
                 filtered.append(t)
         else:
             filtered.append(t)
@@ -596,10 +601,12 @@ with col_left:
         active_class = "active-card" if is_active else ""
         
         with grid_cols[idx % 3]:
+            # הוספת תצוגת כמות השירים מתחת לשם הפלייליסט
             st.markdown(f"""
             <div class="playlist-card-container {active_class}">
                 <img src="{p['image']}" class="card-cover">
                 <div class="card-title">{p['name']}</div>
+                <div class="card-subtitle">{p['track_count']} Tracks</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -657,13 +664,13 @@ with col_right:
             st.session_state.active_mood = None if is_mood_active else m
             st.rerun()
 
-    # חישוב תגיות ברירת מחדל מוגנות
     valid_defaults = []
     if st.session_state.active_mood:
         raw_tags = GENRE_MOOD_MAP.get(st.session_state.active_mood, [])
         for tag_word in raw_tags:
             for g in available_subgenres:
-                if tag_word == g or tag_word in g:
+                # הותאם לסינון הרחב כדי למנוע קריסת Multiselect
+                if tag_word in g:
                     if g not in valid_defaults:
                         valid_defaults.append(g)
 
@@ -694,29 +701,28 @@ with col_right:
 
             with st.spinner(f"Queuing {len(track_uris)} randomized tracks..."):
                 target_id = get_or_create_target_playlist(sp)
-                # דריסה נקייה של הפלייליסט עם השירים המוגרלים בלבד
                 sp.playlist_replace_items(target_id, track_uris[:100])
                 if len(track_uris) > 100:
                     sp.playlist_add_items(target_id, track_uris[100:200])
 
             if selected_device_id:
+                # השהייה קטנה כדי לוודא שספוטיפיי רואה את השירים החדשים בפלייליסט לפני הניגון
+                time.sleep(0.5)
+                
                 try:
                     sp.shuffle(state=False, device_id=selected_device_id)
                 except Exception:
                     pass
                 try:
-                    # ניגון ישיר של רשימת ה-URIs כדי למנוע זליגת שירים חיצוניים מ-Spotify
+                    # חזרה לניגון כפלייליסט, הרבה יותר אמין מול כל המכשירים
                     sp.start_playback(
                         device_id=selected_device_id,
-                        uris=track_uris[:100]
+                        context_uri=f"spotify:playlist:{target_id}",
+                        offset={"position": 0}
                     )
                 except Exception:
                     try:
-                        sp.start_playback(
-                            device_id=selected_device_id,
-                            context_uri=f"spotify:playlist:{target_id}",
-                            offset={"position": 0}
-                        )
+                        sp.start_playback(device_id=selected_device_id, uris=track_uris[:100])
                     except Exception:
                         pass
             st.rerun()
