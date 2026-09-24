@@ -644,26 +644,51 @@ if "pl_offset" not in st.session_state:
 max_offset = max(0, len(available_playlists) - 6)
 
 # ==========================================
-# 5. קרוסלת פלייליסטים אופקית (Playlist Carousel)
+# 5. קרוסלת פלייליסטים אופקית עם חצים בצדדים
 # ==========================================
-h_col1, h_col2, h_col3 = st.columns([10, 1, 1])
-with h_col1:
-    st.markdown("#### Your Library")
-with h_col2:
-    if st.button("<", key="prev_pl", use_container_width=True):
+st.markdown("#### Your Library")
+
+# עיצוב מותאם לחצים בצדדים (ממורכזים אנכית וגדולים יותר)
+st.markdown("""
+<style>
+    div[data-testid="stHorizontalBlock"]:has(.carousel-arrow-btn) {
+        align-items: center;
+    }
+    .carousel-arrow-btn button {
+        height: 100% !important;
+        min-height: 110px !important;
+        font-size: 1.6rem !important;
+        font-weight: 900 !important;
+        background-color: rgba(255, 255, 255, 0.04) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 12px !important;
+        color: #B3B3B3 !important;
+        transition: all 0.2s ease !important;
+    }
+    .carousel-arrow-btn button:hover {
+        background-color: rgba(29, 185, 84, 0.2) !important;
+        border-color: #1DB954 !important;
+        color: #FFFFFF !important;
+        transform: scale(1.04);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# חלוקה ל-8 עמודות: עמודת חץ שמאלי, 6 עמודות פלייליסטים, עמודת חץ ימני
+c_cols = st.columns([0.45, 1, 1, 1, 1, 1, 1, 0.45], gap="small")
+
+# חץ שמאלי (אחורה)
+with c_cols[0]:
+    st.markdown('<div class="carousel-arrow-btn">', unsafe_allow_html=True)
+    if st.button("‹", key="prev_pl", use_container_width=True):
         st.session_state.pl_offset = max(0, st.session_state.pl_offset - 2)
         st.rerun()
-with h_col3:
-    if st.button(">", key="next_pl", use_container_width=True):
-        st.session_state.pl_offset = min(max_offset, st.session_state.pl_offset + 2)
-        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# הצגת 6 פלייליסטים בו זמנית בשורה אחת
+# 6 הפלייליסטים המוצגים
 visible_playlists = available_playlists[st.session_state.pl_offset : st.session_state.pl_offset + 6]
-pl_cols = st.columns(6)
-
 for idx, p in enumerate(visible_playlists):
-    with pl_cols[idx]:
+    with c_cols[idx + 1]:
         is_active = (p['id'] == st.session_state.selected_playlist_id)
         active_class = "active-card" if is_active else ""
         
@@ -681,6 +706,14 @@ for idx, p in enumerate(visible_playlists):
             st.session_state.active_mood = None
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
+
+# חץ ימני (קדימה)
+with c_cols[7]:
+    st.markdown('<div class="carousel-arrow-btn">', unsafe_allow_html=True)
+    if st.button("›", key="next_pl", use_container_width=True):
+        st.session_state.pl_offset = min(max_offset, st.session_state.pl_offset + 2)
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.write("---")
 
