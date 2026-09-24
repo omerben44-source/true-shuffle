@@ -364,19 +364,41 @@ TARGET_PLAYLIST_NAME = "True Shuffle - Mix"
 MAX_SAMPLE_COUNT = 200
 CACHE_FILE = "genres_cache.json"
 
+# תגיות חיוביות לכל מצב
 GENRE_MOOD_MAP = {
     "🚗 Drive": ["pop", "dance pop", "electropop", "synthpop", "indie pop", "funk"],
-    "🌙 Chill": ["acoustic", "ambient", "chillout", "lo-fi", "lofi", "piano", "soundtrack", "soul", "city pop"],
-    "🎸 Rock": ["rock", "classic rock", "hard rock", "alternative rock", "grunge", "punk rock"],
-    "🤘 Metal": ["metal", "metalcore", "post-hardcore", "nu metal", "heavy metal", "deathcore", "djent"],
-    "👑 Classics": ["classic rock", "80s", "70s", "90s", "oldies", "disco", "blues", "retro"],
+    "🌙 Chill": ["acoustic", "ambient", "chillout", "lo-fi", "lofi", "piano", "downtempo", "relax", "chill", "sleep"],
+    "🎸 Rock": ["rock", "classic rock", "hard rock", "alternative rock", "grunge", "punk rock", "indie rock"],
+    "🤘 Metal": ["metal", "metalcore", "post-hardcore", "nu metal", "heavy metal", "deathcore", "djent", "thrash metal"],
+    "👑 Classics": ["classic rock", "80s", "70s", "60s", "90s", "oldies", "disco", "blues", "retro", "classic"],
     "🎉 Party": ["dance", "club", "edm", "house", "electro", "hip hop", "rap", "trap"],
-    "⚡ Workout": ["power metal", "hardstyle", "synthwave", "trap", "electronic rock", "dubstep"],
-    "🧠 Focus": ["instrumental", "soundtrack", "ambient", "modern classical", "minimalism"]
+    "⚡ Workout": ["power metal", "hardstyle", "synthwave", "trap", "electronic rock", "dubstep", "workout"],
+    "🧠 Focus": ["instrumental", "ambient", "modern classical", "minimalism", "study", "soundtrack"]
+}
+
+# חסימות שליליות (Blacklists) למניעת זליגת שירים לא מתאימים
+MOOD_BLACKLIST = {
+    "🌙 Chill": {
+        "rock", "metal", "hard rock", "metalcore", "punk", "edm", "dance", 
+        "electronic", "electro", "house", "dubstep", "synthwave", "soundtrack", 
+        "epic", "j-rock", "party", "club", "trap", "heavy metal", "power metal"
+    },
+    "🧠 Focus": {
+        "screamo", "metalcore", "death metal", "hardstyle", "dubstep", "party", "club"
+    },
+    "👑 Classics": {
+        "edm", "trap", "dubstep", "electro", "hyperpop", "modern rock", "contemporary"
+    },
+    "🎸 Rock": {
+        "edm", "house", "hip hop", "rap", "trap", "ambient"
+    },
+    "🤘 Metal": {
+        "pop", "dance pop", "acoustic", "lo-fi", "lofi", "ambient", "edm", "disco"
+    }
 }
 
 # ==========================================
-# 3. פונקציות API (מופרדות פר משתמש)
+# 3. פונקציות API
 # ==========================================
 def format_ms(ms):
     seconds = int((ms / 1000) % 60)
@@ -491,9 +513,30 @@ def load_and_classify_tracks(_sp, playlist_id):
 
     return tracks
 
-def filter_tracks_by_tags(tracks, selected_tags):
-    if not selected_tags: return tracks
-    return [t for t in tracks if any(tag in t['genres'] for tag in selected_tags)]
+def filter_tracks_by_tags(tracks, selected_tags, active_mood=None):
+    if not selected_tags and not active_mood:
+        return tracks
+
+    blacklist = MOOD_BLACKLIST.get(active_mood, set())
+    filtered = []
+
+    for t in tracks:
+        track_genres = set(t.get('genres', []))
+
+        # בדיקת חסימות (אם יש התאמה לז'אנר ברשימה השחורה של המוד הנוכחי - פוסלים)
+        if blacklist:
+            is_blacklisted = any(bad in g for bad in blacklist for g in track_genres)
+            if is_blacklisted:
+                continue
+
+        # בדיקת התאמה לתגיות הנבחרות
+        if selected_tags:
+            if any(tag in track_genres for tag in selected_tags):
+                filtered.append(t)
+        else:
+            filtered.append(t)
+
+    return filtered
 
 # ==========================================
 # 4. ניהול מצב (State Management)
@@ -600,18 +643,27 @@ with col_right:
             st.session_state.active_mood = None if is_mood_active else m
             st.rerun()
 
-    current_tags = []
+    # חישוב תגיות ברירת מחדל בצורה מוגנת מפני קריסות (Strict Verification)
+    valid_defaults = []
     if st.session_state.active_mood:
         raw_tags = GENRE_MOOD_MAP.get(st.session_state.active_mood, [])
-        current_tags = [t for t in raw_tags if any(t in g for g in available_subgenres)]
+        # מוצאים את כל התת-ז'אנרים שבאמת קיימים בפלייליסט ומכילים את אחת מהמילים
+        for tag_word in raw_tags:
+            for g in available_subgenres:
+                if tag_word == g or tag_word in g:
+                    if g not in valid_defaults:
+                        valid_defaults.append(g)
+
+    # וידוא קפדני: כל איבר ב-default חייב להופיע ב-options
+    safe_defaults = [v for v in valid_defaults if v in available_subgenres]
 
     selected_subgenres = st.multiselect(
         "Active Genre Tags:",
         options=available_subgenres,
-        default=current_tags
+        default=safe_defaults
     )
 
-    pool_tracks = filter_tracks_by_tags(all_tracks, selected_subgenres)
+    pool_tracks = filter_tracks_by_tags(all_tracks, selected_subgenres, st.session_state.active_mood)
 
     st.markdown(f"""
     <div style="font-size: 0.88rem; color: #DDDDDD; margin-top: -6px; margin-bottom: 16px;">
