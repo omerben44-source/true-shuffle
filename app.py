@@ -11,7 +11,7 @@ from spotipy.oauth2 import SpotifyOAuth
 from spotipy.cache_handler import CacheHandler
 import extra_streamlit_components as stx
 
-st.set_page_config(page_title="True Shuffle", page_icon="🎵", layout="wide")
+st.set_page_config(page_title="True Shuffle", layout="wide")
 
 # ==========================================
 # 1. עיצוב הממשק (CSS)
@@ -42,25 +42,32 @@ st.markdown("""
         max-width: 1440px;
     }
 
+    /* כותרת ראשית מרכזית ודומיננטית */
     .header-box {
-        border-bottom: 1px solid rgba(255,255,255,0.12);
-        padding-bottom: 12px;
-        margin-bottom: 22px;
         display: flex;
-        justify-content: space-between;
+        justify-content: center;
         align-items: center;
+        margin-top: 0px;
+        margin-bottom: 35px;
+        padding-bottom: 5px;
     }
     .header-title {
-        font-size: 2.2rem;
-        font-weight: 800;
-        letter-spacing: -0.5px;
+        font-size: 5rem;
+        font-weight: 900;
+        letter-spacing: -2px;
+        color: #1DB954;
+        text-shadow: 0px 0px 30px rgba(29, 185, 84, 0.5);
+        text-transform: uppercase;
         margin: 0;
-        color: #FFFFFF;
     }
-    .header-sub {
-        font-size: 0.92rem;
-        color: #B3B3B3;
-        margin-top: 4px;
+
+    /* נגן מרחף (Sticky) שזז עם הגלילה */
+    div[data-testid="column"]:has(.sticky-marker) {
+        position: -webkit-sticky;
+        position: sticky;
+        top: 25px;
+        align-self: flex-start;
+        z-index: 999;
     }
 
     /* כרטיסיות גריד */
@@ -93,7 +100,7 @@ st.markdown("""
     .card-title {
         color: #FFFFFF;
         font-weight: 700;
-        font-size: 0.88rem;
+        font-size: 0.85rem;
         margin-top: 8px;
         margin-bottom: 6px;
         white-space: nowrap;
@@ -105,7 +112,7 @@ st.markdown("""
         background-color: rgba(255,255,255,0.08) !important;
         border: 1px solid rgba(255,255,255,0.15) !important;
         color: #FFFFFF !important;
-        font-size: 0.78rem !important;
+        font-size: 0.75rem !important;
         font-weight: 600 !important;
         border-radius: 20px !important;
         padding: 4px 10px !important;
@@ -323,7 +330,8 @@ CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
 LASTFM_KEY = os.getenv("LASTFM_API_KEY")
-SCOPE = "user-read-playback-state user-modify-playback-state playlist-read-private playlist-modify-private playlist-modify-public user-library-read"
+
+SCOPE = "user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-library-read"
 
 cookie_manager = stx.CookieManager()
 
@@ -370,8 +378,7 @@ if not token_info:
     auth_url = sp_oauth.get_authorize_url()
     st.markdown(f'''
         <div style="display:flex; justify-content:center; align-items:center; height:60vh; flex-direction:column; text-align:center;">
-            <h1 style="font-size: 3.5rem; font-weight: 800; margin-bottom: 10px;">True Shuffle</h1>
-            <p style="color: #AAAAAA; font-size: 1.2rem; margin-bottom: 30px;">Connect your Spotify account to start</p>
+            <h1 style="font-size: 5rem; font-weight: 900; margin-bottom: 30px; color: #1DB954; text-transform: uppercase; text-shadow: 0px 0px 30px rgba(29, 185, 84, 0.5);">TRUE SHUFFLE</h1>
             <a href="{auth_url}" style="background-color:#1DB954; color:black; padding:16px 32px; text-decoration:none; border-radius:50px; font-weight:800; font-size:1.2rem; transition: transform 0.2s;">
                 LOG IN WITH SPOTIFY
             </a>
@@ -379,7 +386,6 @@ if not token_info:
     ''', unsafe_allow_html=True)
     st.stop()
 
-# הרחבת Timeout ומספר ניסיונות חוזרים למניעת ניתוקי רשת בענן
 sp = spotipy.Spotify(
     auth_manager=sp_oauth,
     requests_timeout=20,
@@ -390,20 +396,17 @@ TARGET_PLAYLIST_NAME = "True Shuffle - Mix"
 MAX_SAMPLE_COUNT = 200
 CACHE_FILE = "genres_cache.json"
 
+# קטגוריות מצומצמות (ללא אימוג'ים)
 GENRE_MOOD_MAP = {
-    "🚗 Drive": ["pop", "dance pop", "electropop", "synthpop", "indie pop", "funk"],
-    "🌙 Chill": ["acoustic", "ambient", "chillout", "lo-fi", "lofi", "piano", "downtempo", "relax", "chill", "sleep"],
-    "🎸 Rock": ["rock", "classic rock", "hard rock", "alternative rock", "grunge", "punk rock", "indie rock"],
-    "🤘 Metal": ["metal", "metalcore", "post-hardcore", "nu metal", "heavy metal", "deathcore", "djent", "thrash metal"],
-    "👑 Classics": ["classic rock", "80s", "70s", "60s", "90s", "oldies", "disco", "blues", "retro", "classic"],
-    "🎉 Party": ["dance", "club", "edm", "house", "electro", "hip hop", "rap", "trap"],
-    "⚡ Workout": ["power metal", "hardstyle", "synthwave", "trap", "electronic rock", "dubstep", "workout"],
-    "🧠 Focus": ["instrumental", "ambient", "modern classical", "minimalism", "study"]
+    "Drive": ["pop", "dance pop", "electropop", "synthpop", "indie pop", "funk"],
+    "Chill": ["acoustic", "ambient", "chillout", "lo-fi", "lofi", "piano", "downtempo", "relax", "chill", "sleep"],
+    "Rock": ["rock", "classic rock", "hard rock", "alternative rock", "grunge", "punk rock", "indie rock"],
+    "Metal": ["metal", "metalcore", "post-hardcore", "nu metal", "heavy metal", "deathcore", "djent", "thrash metal"],
+    "Party": ["dance", "club", "edm", "house", "electro", "hip hop", "rap", "trap"]
 }
 
-# חסימה ממוקדת בלבד עבור Chill (מניעת רוק כבד/מטאל ושירי OST מלחמתיים)
 MOOD_BLACKLIST = {
-    "🌙 Chill": {"metal", "heavy metal", "death metal", "metalcore", "hard rock", "screamo", "hardstyle", "soundtrack", "ost", "epic"}
+    "Chill": {"metal", "heavy metal", "death metal", "metalcore", "hard rock", "screamo", "hardstyle", "soundtrack", "ost", "epic"}
 }
 
 # ==========================================
@@ -415,7 +418,6 @@ def format_ms(ms):
     return f"{minutes}:{seconds:02d}"
 
 def get_or_create_target_playlist(_sp):
-    # חיפוש האם הפלייליסט כבר קיים בחשבון המשתמש
     try:
         offset = 0
         while True:
@@ -432,7 +434,6 @@ def get_or_create_target_playlist(_sp):
     except Exception:
         pass
 
-    # יצירה בטוחה באמצעות ה-endpoint המודרני של ספוטיפיי
     try:
         new_playlist = _sp.current_user_playlist_create(
             name=TARGET_PLAYLIST_NAME,
@@ -552,7 +553,6 @@ def load_and_classify_tracks(_sp, user_id, playlist_id):
     unique_artists = list({a for t in tracks for a in t['artists']})
     new_fetches = 0
 
-    # 1. שליפה מ-Last.fm
     for artist in unique_artists:
         if artist not in cached_genres:
             genres = fetch_artist_genres_lastfm(artist)
@@ -561,7 +561,6 @@ def load_and_classify_tracks(_sp, user_id, playlist_id):
             if new_fetches % 20 == 0:
                 save_cached_genres(cached_genres)
 
-    # 2. גיבוי מ-Spotify API לאמנים שנשארו ללא תגיות
     missing_artists = [a for a in unique_artists if not cached_genres.get(a) and a in artist_id_map]
     if missing_artists:
         for i in range(0, len(missing_artists), 50):
@@ -597,15 +596,13 @@ def filter_tracks_by_tags(tracks, selected_tags, active_mood=None):
 
     for t in tracks:
         track_genres = set(t.get('genres', []))
-
-        # שלילה אם יש התאמה ל-blacklist
+        
         if blacklist:
             is_blacklisted = any(bad in g for bad in blacklist for g in track_genres)
             if is_blacklisted:
                 continue
 
         if selected_tags:
-            # התאמה רחבה ששומרת על פול שירים עשיר
             if any(tag in g for tag in selected_tags for g in track_genres):
                 filtered.append(t)
         else:
@@ -618,10 +615,7 @@ def filter_tracks_by_tags(tracks, selected_tags, active_mood=None):
 # ==========================================
 st.markdown("""
 <div class="header-box">
-    <div>
-        <h1 class="header-title">True Shuffle</h1>
-        <div class="header-sub">Algorithmic-free random playback controller</div>
-    </div>
+    <h1 class="header-title">TRUE SHUFFLE</h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -643,44 +637,66 @@ if "selected_playlist_id" not in st.session_state:
 if "active_mood" not in st.session_state:
     st.session_state.active_mood = None
 
-# ==========================================
-# 5. גריד וסינון
-# ==========================================
-col_left, col_right = st.columns([1.1, 1.3], gap="large")
+# ניהול מיקום קרוסלת הפלייליסטים
+if "pl_offset" not in st.session_state:
+    st.session_state.pl_offset = 0
 
-with col_left:
+max_offset = max(0, len(available_playlists) - 6)
+
+# ==========================================
+# 5. קרוסלת פלייליסטים אופקית (Playlist Carousel)
+# ==========================================
+h_col1, h_col2, h_col3 = st.columns([10, 1, 1])
+with h_col1:
     st.markdown("#### Your Library")
-    
-    grid_cols = st.columns(3)
-    for idx, p in enumerate(available_playlists):
+with h_col2:
+    if st.button("<", key="prev_pl", use_container_width=True):
+        st.session_state.pl_offset = max(0, st.session_state.pl_offset - 2)
+        st.rerun()
+with h_col3:
+    if st.button(">", key="next_pl", use_container_width=True):
+        st.session_state.pl_offset = min(max_offset, st.session_state.pl_offset + 2)
+        st.rerun()
+
+# הצגת 6 פלייליסטים בו זמנית בשורה אחת
+visible_playlists = available_playlists[st.session_state.pl_offset : st.session_state.pl_offset + 6]
+pl_cols = st.columns(6)
+
+for idx, p in enumerate(visible_playlists):
+    with pl_cols[idx]:
         is_active = (p['id'] == st.session_state.selected_playlist_id)
         active_class = "active-card" if is_active else ""
         
-        with grid_cols[idx % 3]:
-            st.markdown(f"""
-            <div class="playlist-card-container {active_class}">
-                <img src="{p['image']}" class="card-cover">
-                <div class="card-title">{p['name']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown('<div class="playlist-select-btn">', unsafe_allow_html=True)
-            btn_label = "Active" if is_active else "Select"
-            if st.button(btn_label, key=f"sel_p_{p['id']}", use_container_width=True):
-                st.session_state.selected_playlist_id = p['id']
-                st.session_state.active_mood = None
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="playlist-card-container {active_class}">
+            <img src="{p['image']}" class="card-cover">
+            <div class="card-title">{p['name']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="playlist-select-btn">', unsafe_allow_html=True)
+        btn_label = "Active" if is_active else "Select"
+        if st.button(btn_label, key=f"sel_p_{p['id']}", use_container_width=True):
+            st.session_state.selected_playlist_id = p['id']
+            st.session_state.active_mood = None
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    active_p_index = next((i for i, p in enumerate(available_playlists) if p['id'] == st.session_state.selected_playlist_id), 0)
-    active_p = available_playlists[active_p_index]
-    
-    with st.spinner(f"Loading {active_p['name']}..."):
-        all_tracks = load_and_classify_tracks(sp, current_user_id, active_p['id'])
+st.write("---")
 
-    available_subgenres = sorted(list({g for t in all_tracks for g in t['genres']}))
+# ==========================================
+# 6. אזור מרכזי: סינונים (שמאל) ונגן מרחף (ימין)
+# ==========================================
+col_left, col_right = st.columns([1.1, 1.3], gap="large")
 
-    st.write("")
+# חיפוש הפלייליסט הנבחר
+active_p_index = next((i for i, p in enumerate(available_playlists) if p['id'] == st.session_state.selected_playlist_id), 0)
+active_p = available_playlists[active_p_index]
+
+with st.spinner(f"Loading {active_p['name']}..."):
+    all_tracks = load_and_classify_tracks(sp, current_user_id, active_p['id'])
+
+with col_left:
     try:
         devices_res = sp.devices().get('devices', [])
     except Exception:
@@ -693,110 +709,101 @@ with col_left:
         selected_device_name = st.selectbox("Active Device", list(device_options.keys()))
         selected_device_id = device_options[selected_device_name]
 
-with col_right:
     st.markdown("#### Mood Filter")
 
-    mood_keys = list(GENRE_MOOD_MAP.keys())
-    row1 = st.columns(4)
-    row2 = st.columns(4)
-
-    for i in range(4):
-        m = mood_keys[i]
-        is_mood_active = (st.session_state.active_mood == m)
-        btn_type = "primary" if is_mood_active else "secondary"
-        
-        if row1[i].button(m, key=f"mood_{m}", type=btn_type, use_container_width=True):
-            st.session_state.active_mood = None if is_mood_active else m
-            st.rerun()
-
-    for i in range(4):
-        m = mood_keys[4 + i]
-        is_mood_active = (st.session_state.active_mood == m)
-        btn_type = "primary" if is_mood_active else "secondary"
-        
-        if row2[i].button(m, key=f"mood_{m}", type=btn_type, use_container_width=True):
-            st.session_state.active_mood = None if is_mood_active else m
-            st.rerun()
-
-    valid_defaults = []
-    if st.session_state.active_mood:
-        raw_tags = GENRE_MOOD_MAP.get(st.session_state.active_mood, [])
-        for tag_word in raw_tags:
-            for g in available_subgenres:
-                if tag_word in g:
-                    if g not in valid_defaults:
-                        valid_defaults.append(g)
-
-    safe_defaults = [v for v in valid_defaults if v in available_subgenres]
-
-    selected_subgenres = st.multiselect(
-        "Active Genre Tags:",
-        options=available_subgenres,
-        default=safe_defaults
-    )
-
-    if selected_subgenres or st.session_state.active_mood:
-        pool_tracks = filter_tracks_by_tags(all_tracks, selected_subgenres, st.session_state.active_mood)
+    if not all_tracks:
+        st.warning("We couldn't load tracks from this playlist. Spotify restricts API access to certain personalized playlists (like Daily Mixes), or the playlist might be empty. Please choose a different playlist.")
+        pool_tracks = []
     else:
-        # אם אין פילטר פעיל, כל הפלייליסט זמין לשאפל
-        pool_tracks = all_tracks
+        available_subgenres = sorted(list({g for t in all_tracks for g in t['genres']}))
+        mood_keys = list(GENRE_MOOD_MAP.keys())
+        mood_cols = st.columns(len(mood_keys))
 
-    st.markdown(f"""
-    <div style="font-size: 0.88rem; color: #DDDDDD; margin-top: -6px; margin-bottom: 16px;">
-        Pool Size: <strong style="color: #1DB954;">{len(pool_tracks)}</strong> tracks ready for true random shuffle
-    </div>
-    """, unsafe_allow_html=True)
+        for i, m in enumerate(mood_keys):
+            is_mood_active = (st.session_state.active_mood == m)
+            btn_type = "primary" if is_mood_active else "secondary"
+            if mood_cols[i].button(m, key=f"mood_{m}", type=btn_type, use_container_width=True):
+                st.session_state.active_mood = None if is_mood_active else m
+                st.rerun()
 
-    if st.button("🚀 True Shuffle & Play", type="primary", use_container_width=True):
-        if not pool_tracks:
-            st.error("No tracks match your genre criteria.")
+        valid_defaults = []
+        if st.session_state.active_mood:
+            raw_tags = GENRE_MOOD_MAP.get(st.session_state.active_mood, [])
+            for tag_word in raw_tags:
+                for g in available_subgenres:
+                    if tag_word in g:
+                        if g not in valid_defaults:
+                            valid_defaults.append(g)
+
+        safe_defaults = [v for v in valid_defaults if v in available_subgenres]
+
+        selected_subgenres = st.multiselect(
+            "Active Genre Tags:",
+            options=available_subgenres,
+            default=safe_defaults
+        )
+
+        if selected_subgenres or st.session_state.active_mood:
+            pool_tracks = filter_tracks_by_tags(all_tracks, selected_subgenres, st.session_state.active_mood)
         else:
-            sample_size = min(len(pool_tracks), MAX_SAMPLE_COUNT)
-            sampled_tracks = random.sample(pool_tracks, sample_size)
-            random.shuffle(sampled_tracks)
-            track_uris = [t['uri'] for t in sampled_tracks]
+            pool_tracks = all_tracks
 
-            with st.spinner(f"Queuing {len(track_uris)} randomized tracks..."):
-                target_id = get_or_create_target_playlist(sp)
-                
-                # החלפת שירים בטוחה עם מנגנון Retry נגד Timeout
-                success = False
-                for attempt in range(2):
-                    try:
-                        sp.playlist_replace_items(target_id, track_uris[:100])
-                        if len(track_uris) > 100:
-                            sp.playlist_add_items(target_id, track_uris[100:200])
-                        success = True
-                        break
-                    except Exception:
-                        time.sleep(1)
-                
-                if not success:
-                    st.error("Spotify API took too long to respond. Please try clicking the button again.")
-                    st.stop()
+        st.markdown(f"""
+        <div style="font-size: 0.88rem; color: #DDDDDD; margin-top: -6px; margin-bottom: 16px;">
+            Pool Size: <strong style="color: #1DB954;">{len(pool_tracks)}</strong> tracks ready for true random shuffle
+        </div>
+        """, unsafe_allow_html=True)
 
-            if selected_device_id:
-                time.sleep(0.5)
-                try:
-                    sp.shuffle(state=False, device_id=selected_device_id)
-                except Exception:
-                    pass
-                try:
-                    sp.start_playback(
-                        device_id=selected_device_id,
-                        context_uri=f"spotify:playlist:{target_id}",
-                        offset={"position": 0}
-                    )
-                except Exception:
+        if st.button("True Shuffle & Play", type="primary", use_container_width=True):
+            if not pool_tracks:
+                st.error("No tracks match your genre criteria.")
+            else:
+                sample_size = min(len(pool_tracks), MAX_SAMPLE_COUNT)
+                sampled_tracks = random.sample(pool_tracks, sample_size)
+                random.shuffle(sampled_tracks)
+                track_uris = [t['uri'] for t in sampled_tracks]
+
+                with st.spinner(f"Queuing {len(track_uris)} randomized tracks..."):
+                    target_id = get_or_create_target_playlist(sp)
+                    
+                    success = False
+                    for attempt in range(2):
+                        try:
+                            sp.playlist_replace_items(target_id, track_uris[:100])
+                            if len(track_uris) > 100:
+                                sp.playlist_add_items(target_id, track_uris[100:200])
+                            success = True
+                            break
+                        except Exception:
+                            time.sleep(1)
+                    
+                    if not success:
+                        st.error("Spotify API took too long to respond. Please try clicking the button again.")
+                        st.stop()
+
+                if selected_device_id:
+                    time.sleep(0.5)
                     try:
-                        sp.start_playback(device_id=selected_device_id, uris=track_uris[:100])
+                        sp.shuffle(state=False, device_id=selected_device_id)
                     except Exception:
                         pass
-            st.rerun()
+                    try:
+                        sp.start_playback(
+                            device_id=selected_device_id,
+                            context_uri=f"spotify:playlist:{target_id}",
+                            offset={"position": 0}
+                        )
+                    except Exception:
+                        try:
+                            sp.start_playback(device_id=selected_device_id, uris=track_uris[:100])
+                        except Exception:
+                            pass
+                st.rerun()
 
-    # ==========================================
-    # 6. נגן קבוע + מעבר אוטומטי חכם
-    # ==========================================
+with col_right:
+    # סמן נסתר ל-CSS שמייצר את האפקט המרחף (Sticky) לכל העמודה הימנית
+    st.markdown('<div class="sticky-marker"></div>', unsafe_allow_html=True)
+
     playback_state = None
     upcoming_tracks = []
     try:
@@ -815,7 +822,7 @@ with col_right:
         track_artists = ', '.join([a['name'] for a in item.get('artists', [])])
         album_name = item.get('album', {}).get('name', '')
         album_img = item.get('album', {}).get('images', [{}])[0].get('url', 'https://community.spotify.com/t5/image/serverpage/image-id/25294iA2807C22F2D4D360')
-        tag_status = '▶ PLAYING ON SPOTIFY' if is_playing else '⏸ PAUSED ON SPOTIFY'
+        tag_status = 'PLAYING ON SPOTIFY' if is_playing else 'PAUSED ON SPOTIFY'
     else:
         fallback_track = all_tracks[0] if all_tracks else {
             "name": "Ready to Shuffle",
@@ -831,7 +838,7 @@ with col_right:
         track_artists = ', '.join(fallback_track.get('artists', []))
         album_name = fallback_track.get('album', '')
         album_img = fallback_track.get('image', 'https://community.spotify.com/t5/image/serverpage/image-id/25294iA2807C22F2D4D360')
-        tag_status = '⏸ READY TO PLAY'
+        tag_status = 'READY TO PLAY'
 
     progress_pct = min(100, max(0, int((progress_ms / total_ms) * 100)))
     spinning_class = "vinyl-spinning" if is_playing else ""
@@ -895,19 +902,18 @@ with col_right:
 
     st.markdown(card_html, unsafe_allow_html=True)
 
-    # כפתורי שליטה
     st.markdown('<div class="media-controls-container">', unsafe_allow_html=True)
     spacer_left, btn_col1, btn_col2, btn_col3, spacer_right = st.columns([1.6, 1, 1.2, 1, 1.6])
     
     with btn_col1:
-        if st.button("⏮ Prev", key="btn_prev", use_container_width=True):
+        if st.button("Prev", key="btn_prev", use_container_width=True):
             try:
                 sp.previous_track(device_id=selected_device_id)
                 st.rerun()
             except Exception:
                 pass
     with btn_col2:
-        play_label = "⏸ Pause" if is_playing else "▶ Play"
+        play_label = "Pause" if is_playing else "Play"
         if st.button(play_label, key="btn_play_pause", use_container_width=True):
             try:
                 if is_playing:
@@ -918,7 +924,7 @@ with col_right:
             except Exception:
                 pass
     with btn_col3:
-        if st.button("⏭ Next", key="btn_nxt", use_container_width=True):
+        if st.button("Next", key="btn_nxt", use_container_width=True):
             try:
                 sp.next_track(device_id=selected_device_id)
                 st.rerun()
@@ -926,7 +932,6 @@ with col_right:
                 pass
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # מעבר אוטומטי שקוף בסיום שיר
     if is_playing and remaining_ms > 0:
         auto_refresh_delay_ms = remaining_ms + 1500
         components.html(
