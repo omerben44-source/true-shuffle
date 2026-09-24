@@ -379,7 +379,7 @@ if not token_info:
     ''', unsafe_allow_html=True)
     st.stop()
 
-# הרחבת Timeout ומספר ניסיונות חוזרים למניעת ניתוקי רשת
+# הרחבת Timeout ומספר ניסיונות חוזרים למניעת ניתוקי רשת בענן
 sp = spotipy.Spotify(
     auth_manager=sp_oauth,
     requests_timeout=20,
@@ -495,13 +495,16 @@ def save_cached_genres(cache):
         pass
 
 def fetch_artist_genres_lastfm(artist_name):
-    if not LASTFM_KEY: return []
+    if not LASTFM_KEY:
+        return []
     try:
         url = "http://ws.audioscrobbler.com/2.0/"
         params = {"method": "artist.gettoptags", "artist": artist_name, "api_key": LASTFM_KEY, "format": "json"}
-        r = requests.get(url, params=params, timeout=2.5)
+        r = requests.get(url, params=params, timeout=4.0)
         if r.status_code == 200:
-            return [t['name'].lower() for t in r.json().get('toptags', {}).get('tag', [])[:10]]
+            tags = r.json().get('toptags', {}).get('tag', [])
+            if isinstance(tags, list):
+                return [t['name'].lower() for t in tags[:10] if 'name' in t]
     except Exception:
         pass
     return []
@@ -510,6 +513,8 @@ def fetch_artist_genres_lastfm(artist_name):
 def load_and_classify_tracks(_sp, user_id, playlist_id):
     tracks = []
     offset = 0
+    artist_id_map = {}
+
     while True:
         try:
             res = _sp.playlist_items(playlist_id, offset=offset, limit=100)
@@ -522,7 +527,13 @@ def load_and_classify_tracks(_sp, user_id, playlist_id):
         for entry in items:
             track = entry.get('item') or entry.get('track')
             if track and track.get('uri', '').startswith("spotify:track:"):
-                artist_names = [a['name'] for a in track.get('artists', []) if 'name' in a]
+                artist_names = []
+                for a in track.get('artists', []):
+                    if 'name' in a:
+                        artist_names.append(a['name'])
+                        if 'id' in a and a['id']:
+                            artist_id_map[a['name']] = a['id']
+
                 album_img = track.get('album', {}).get('images', [{}])[0].get('url', '')
                 tracks.append({
                     'name': track.get('name', 'Unknown'),
@@ -541,13 +552,33 @@ def load_and_classify_tracks(_sp, user_id, playlist_id):
     unique_artists = list({a for t in tracks for a in t['artists']})
     new_fetches = 0
 
+    # 1. שליפה מ-Last.fm
     for artist in unique_artists:
         if artist not in cached_genres:
-            cached_genres[artist] = fetch_artist_genres_lastfm(artist)
+            genres = fetch_artist_genres_lastfm(artist)
+            cached_genres[artist] = genres
             new_fetches += 1
-            if new_fetches % 20 == 0: save_cached_genres(cached_genres)
+            if new_fetches % 20 == 0:
+                save_cached_genres(cached_genres)
 
-    if new_fetches > 0: save_cached_genres(cached_genres)
+    # 2. גיבוי מ-Spotify API לאמנים שנשארו ללא תגיות
+    missing_artists = [a for a in unique_artists if not cached_genres.get(a) and a in artist_id_map]
+    if missing_artists:
+        for i in range(0, len(missing_artists), 50):
+            chunk = missing_artists[i:i+50]
+            chunk_ids = [artist_id_map[a] for a in chunk]
+            try:
+                sp_res = _sp.artists(chunk_ids)
+                for a_data in sp_res.get('artists', []):
+                    if a_data and 'name' in a_data:
+                        sp_genres = [g.lower() for g in a_data.get('genres', [])]
+                        if sp_genres:
+                            cached_genres[a_data['name']] = sp_genres
+            except Exception:
+                pass
+
+    if new_fetches > 0:
+        save_cached_genres(cached_genres)
 
     for t in tracks:
         track_genres = set()
@@ -704,7 +735,11 @@ with col_right:
         default=safe_defaults
     )
 
-    pool_tracks = filter_tracks_by_tags(all_tracks, selected_subgenres, st.session_state.active_mood)
+    if selected_subgenres or st.session_state.active_mood:
+        pool_tracks = filter_tracks_by_tags(all_tracks, selected_subgenres, st.session_state.active_mood)
+    else:
+        # אם אין פילטר פעיל, כל הפלייליסט זמין לשאפל
+        pool_tracks = all_tracks
 
     st.markdown(f"""
     <div style="font-size: 0.88rem; color: #DDDDDD; margin-top: -6px; margin-bottom: 16px;">
@@ -724,7 +759,7 @@ with col_right:
             with st.spinner(f"Queuing {len(track_uris)} randomized tracks..."):
                 target_id = get_or_create_target_playlist(sp)
                 
-                # החלפת שירים בטוחה עם מנגנון ניסיון חוזר נגד ניתוקים
+                # החלפת שירים בטוחה עם מנגנון Retry נגד Timeout
                 success = False
                 for attempt in range(2):
                     try:
