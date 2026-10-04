@@ -42,7 +42,6 @@ st.markdown("""
         max-width: 1440px;
     }
 
-    /* כותרת ראשית מרכזית ודומיננטית */
     .header-box {
         display: flex;
         justify-content: center;
@@ -61,7 +60,6 @@ st.markdown("""
         margin: 0;
     }
 
-    /* נגן מרחף (Sticky) שזז עם הגלילה */
     div[data-testid="column"]:has(.sticky-marker) {
         position: -webkit-sticky;
         position: sticky;
@@ -70,7 +68,6 @@ st.markdown("""
         z-index: 999;
     }
 
-    /* כרטיסיות גריד */
     .playlist-card-container {
         background-color: rgba(22, 17, 28, 0.7);
         backdrop-filter: blur(10px);
@@ -124,7 +121,6 @@ st.markdown("""
         color: #000000 !important;
     }
 
-    /* כפתורי Mood */
     button[kind="secondary"] {
         background-color: rgba(255, 255, 255, 0.08) !important;
         color: #FFFFFF !important;
@@ -155,7 +151,6 @@ st.markdown("""
         color: #000000 !important;
     }
 
-    /* נגן Now Playing */
     .now-playing-card {
         background: linear-gradient(135deg, rgba(22, 16, 28, 0.9), rgba(12, 10, 16, 0.95));
         border: 1px solid #1DB954;
@@ -265,7 +260,6 @@ st.markdown("""
         font-weight: 600;
     }
     
-    /* תור שירים (Up Next) */
     .up-next-section {
         margin-top: 18px;
         border-top: 1px solid rgba(255,255,255,0.08);
@@ -455,7 +449,8 @@ def get_or_create_target_playlist(_sp):
             st.error(f"Failed to create playlist on Spotify: {e}")
             st.stop()
 
-@st.cache_data(ttl=1800, show_spinner=False)
+# Cache קצר יחסית שיודע להביא גם את ה-snapshot_id של הפלייליסטים
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_user_playlists(_sp, user_id):
     playlists = []
     offset = 0
@@ -471,7 +466,8 @@ def fetch_user_playlists(_sp, user_id):
                     'name': p['name'],
                     'id': p['id'],
                     'image': img_url,
-                    'owner': p.get('owner', {}).get('display_name', 'Spotify User')
+                    'owner': p.get('owner', {}).get('display_name', 'Spotify User'),
+                    'snapshot_id': p.get('snapshot_id', '') # שומר את המזהה הייחודי שמשתנה כשהפלייליסט מתעדכן
                 })
         offset += len(items)
         if not res.get('next'):
@@ -509,8 +505,9 @@ def fetch_artist_genres_lastfm(artist_name):
         pass
     return []
 
+# הוספת snapshot_id כדי לשבור את ה-Cache באופן אוטומטי כשנוספים שירים לפלייליסט
 @st.cache_data(show_spinner=False)
-def load_and_classify_tracks(_sp, user_id, playlist_id):
+def load_and_classify_tracks(_sp, user_id, playlist_id, snapshot_id):
     tracks = []
     offset = 0
     artist_id_map = {}
@@ -719,7 +716,8 @@ active_p_index = next((i for i, p in enumerate(available_playlists) if p['id'] =
 active_p = available_playlists[active_p_index]
 
 with st.spinner(f"Loading {active_p['name']}..."):
-    all_tracks = load_and_classify_tracks(sp, current_user_id, active_p['id'])
+    # העברת ה-snapshot_id כדי לרענן אוטומטית מטמון אם הפלייליסט השתנה
+    all_tracks = load_and_classify_tracks(sp, current_user_id, active_p['id'], active_p.get('snapshot_id', ''))
 
 with col_left:
     try:
@@ -806,7 +804,6 @@ with col_left:
                         st.error("Spotify API took too long to respond. Please try clicking the button again.")
                         st.stop()
 
-                # מנגנון השהיה קצר למניעת סנכרון ישן מהשרת של ספוטיפיי
                 time.sleep(2.0)
 
                 if selected_device_id:
@@ -930,8 +927,8 @@ with col_right:
 
     st.markdown('<div class="media-controls-container">', unsafe_allow_html=True)
     
-    # חלוקה ל-4 כפתורי שליטה כולל סנכרון שקט
-    spacer_left, btn_col1, btn_col2, btn_col3, btn_col4, spacer_right = st.columns([1, 1, 1, 1, 1, 1])
+    # חזרה ל-3 כפתורים מרכזיים, מרווחים נכון וללא כפתור Sync
+    spacer_left, btn_col1, btn_col2, btn_col3, spacer_right = st.columns([1.6, 1, 1.2, 1, 1.6])
     
     with btn_col1:
         if st.button("Prev", key="btn_prev", use_container_width=True):
@@ -961,8 +958,5 @@ with col_right:
                 st.rerun()
             except Exception:
                 pass
-    with btn_col4:
-        if st.button("Sync", key="btn_sync", use_container_width=True):
-            st.rerun()
             
     st.markdown('</div>', unsafe_allow_html=True)
