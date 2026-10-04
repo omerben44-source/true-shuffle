@@ -396,7 +396,6 @@ TARGET_PLAYLIST_NAME = "True Shuffle - Mix"
 MAX_SAMPLE_COUNT = 200
 CACHE_FILE = "genres_cache.json"
 
-# קטגוריות מצומצמות (ללא אימוג'ים)
 GENRE_MOOD_MAP = {
     "Drive": ["pop", "dance pop", "electropop", "synthpop", "indie pop", "funk"],
     "Chill": ["acoustic", "ambient", "chillout", "lo-fi", "lofi", "piano", "downtempo", "relax", "chill", "sleep"],
@@ -637,18 +636,16 @@ if "selected_playlist_id" not in st.session_state:
 if "active_mood" not in st.session_state:
     st.session_state.active_mood = None
 
-# ניהול מיקום קרוסלת הפלייליסטים
 if "pl_offset" not in st.session_state:
     st.session_state.pl_offset = 0
 
 max_offset = max(0, len(available_playlists) - 6)
 
 # ==========================================
-# 5. קרוסלת פלייליסטים אופקית עם חצים בצדדים
+# 5. קרוסלת פלייליסטים אופקית (Playlist Carousel)
 # ==========================================
 st.markdown("#### Your Library")
 
-# עיצוב מותאם לחצים בצדדים (ממורכזים אנכית וגדולים יותר)
 st.markdown("""
 <style>
     div[data-testid="stHorizontalBlock"]:has(.carousel-arrow-btn) {
@@ -674,18 +671,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# חלוקה ל-8 עמודות: עמודת חץ שמאלי, 6 עמודות פלייליסטים, עמודת חץ ימני
 c_cols = st.columns([0.45, 1, 1, 1, 1, 1, 1, 0.45], gap="small")
 
-# חץ שמאלי (אחורה)
 with c_cols[0]:
     st.markdown('<div class="carousel-arrow-btn">', unsafe_allow_html=True)
-    if st.button("‹", key="prev_pl", use_container_width=True):
+    if st.button("<", key="prev_pl", use_container_width=True):
         st.session_state.pl_offset = max(0, st.session_state.pl_offset - 2)
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 6 הפלייליסטים המוצגים
 visible_playlists = available_playlists[st.session_state.pl_offset : st.session_state.pl_offset + 6]
 for idx, p in enumerate(visible_playlists):
     with c_cols[idx + 1]:
@@ -707,10 +701,9 @@ for idx, p in enumerate(visible_playlists):
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-# חץ ימני (קדימה)
 with c_cols[7]:
     st.markdown('<div class="carousel-arrow-btn">', unsafe_allow_html=True)
-    if st.button("›", key="next_pl", use_container_width=True):
+    if st.button(">", key="next_pl", use_container_width=True):
         st.session_state.pl_offset = min(max_offset, st.session_state.pl_offset + 2)
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
@@ -722,7 +715,6 @@ st.write("---")
 # ==========================================
 col_left, col_right = st.columns([1.1, 1.3], gap="large")
 
-# חיפוש הפלייליסט הנבחר
 active_p_index = next((i for i, p in enumerate(available_playlists) if p['id'] == st.session_state.selected_playlist_id), 0)
 active_p = available_playlists[active_p_index]
 
@@ -814,8 +806,10 @@ with col_left:
                         st.error("Spotify API took too long to respond. Please try clicking the button again.")
                         st.stop()
 
+                # מנגנון השהיה קצר למניעת סנכרון ישן מהשרת של ספוטיפיי
+                time.sleep(2.0)
+
                 if selected_device_id:
-                    time.sleep(0.5)
                     try:
                         sp.shuffle(state=False, device_id=selected_device_id)
                     except Exception:
@@ -834,7 +828,6 @@ with col_left:
                 st.rerun()
 
 with col_right:
-    # סמן נסתר ל-CSS שמייצר את האפקט המרחף (Sticky) לכל העמודה הימנית
     st.markdown('<div class="sticky-marker"></div>', unsafe_allow_html=True)
 
     playback_state = None
@@ -936,12 +929,15 @@ with col_right:
     st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown('<div class="media-controls-container">', unsafe_allow_html=True)
-    spacer_left, btn_col1, btn_col2, btn_col3, spacer_right = st.columns([1.6, 1, 1.2, 1, 1.6])
+    
+    # חלוקה ל-4 כפתורי שליטה כולל סנכרון שקט
+    spacer_left, btn_col1, btn_col2, btn_col3, btn_col4, spacer_right = st.columns([1, 1, 1, 1, 1, 1])
     
     with btn_col1:
         if st.button("Prev", key="btn_prev", use_container_width=True):
             try:
                 sp.previous_track(device_id=selected_device_id)
+                time.sleep(0.5)
                 st.rerun()
             except Exception:
                 pass
@@ -953,6 +949,7 @@ with col_right:
                     sp.pause_playback(device_id=selected_device_id)
                 else:
                     sp.start_playback(device_id=selected_device_id)
+                time.sleep(0.5)
                 st.rerun()
             except Exception:
                 pass
@@ -960,21 +957,12 @@ with col_right:
         if st.button("Next", key="btn_nxt", use_container_width=True):
             try:
                 sp.next_track(device_id=selected_device_id)
+                time.sleep(0.5)
                 st.rerun()
             except Exception:
                 pass
+    with btn_col4:
+        if st.button("Sync", key="btn_sync", use_container_width=True):
+            st.rerun()
+            
     st.markdown('</div>', unsafe_allow_html=True)
-
-    if is_playing and remaining_ms > 0:
-        auto_refresh_delay_ms = remaining_ms + 1500
-        components.html(
-            f"""
-            <script>
-                setTimeout(function() {{
-                    window.parent.location.reload();
-                }}, {auto_refresh_delay_ms});
-            </script>
-            """,
-            height=0,
-            width=0
-        )
